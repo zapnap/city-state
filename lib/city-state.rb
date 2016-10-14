@@ -1,4 +1,5 @@
 require "city-state/version"
+require "yaml"
 
 module CS
   # CS constants
@@ -8,7 +9,6 @@ module CS
   COUNTRIES_FN = File.join(FILES_FOLDER, "countries.yml")
 
   @countries, @states, @cities = [{}, {}, {}]
-  @current_country = nil # :US, :BR, :GB, :JP, ...
 
   def self.update_maxmind
     require "open-uri"
@@ -58,7 +58,7 @@ module CS
 
     # some state codes are empty: we'll use "states-replace" in these cases
     states_replace_fn = File.join(FILES_FOLDER, "states-replace.yml")
-    states_replace = YAML::load_file(states_replace_fn).symbolize_keys
+    states_replace = symbolize(YAML::load_file(states_replace_fn))
     states_replace = states_replace[country.to_sym] || {} # we need just this country
     states_replace_inv = states_replace.invert # invert key with value, to ease the search
 
@@ -68,14 +68,14 @@ module CS
     File.foreach(MAXMIND_DB_FN) do |line|
       rec = line.split(",")
       next if rec[COUNTRY] != country
-      next if (rec[STATE].blank? && rec[STATE_LONG].blank?) || rec[CITY].blank?
+      next if (blank(rec[STATE]) && blank(rec[STATE_LONG])) || blank(rec[CITY])
 
       # some state codes are empty: we'll use "states-replace" in these cases
-      rec[STATE] = states_replace_inv[rec[STATE_LONG]] if rec[STATE].blank?
-      rec[STATE] = rec[STATE_LONG] if rec[STATE].blank? # there's no correspondent in states-replace: we'll use the long name as code
+      rec[STATE] = states_replace_inv[rec[STATE_LONG]] if blank(rec[STATE])
+      rec[STATE] = rec[STATE_LONG] if blank(rec[STATE]) # there's no correspondent in states-replace: we'll use the long name as code
 
       # some long names are empty: we'll use "states-replace" to get the code
-      rec[STATE_LONG] = states_replace[rec[STATE]] if rec[STATE_LONG].blank?
+      rec[STATE_LONG] = states_replace[rec[STATE]] if blank(rec[STATE_LONG])
 
       # normalize
       rec[STATE] = rec[STATE].to_sym
@@ -107,53 +107,31 @@ module CS
     true
   end
 
-  def self.current_country
-    return @current_country if @current_country.present?
-
-    # we don't have used this method yet: discover by the file extension
-    fn = Dir[File.join(FILES_FOLDER, "cities.*")].last
-    @current_country = fn.blank? ? nil : fn.split(".").last
-    
-    # there's no files: we'll install and use :US
-    if @current_country.blank?
-      @current_country = :US
-      self.install(@current_country)
-
-    # we find a file: normalize the extension to something like :US
-    else
-      @current_country = @current_country.to_s.upcase.to_sym    
-    end
-
-    @current_country
-  end
-
-  def self.current_country=(country)
-    @current_country = country.to_s.upcase.to_sym
-  end
-
-  def self.cities(state, country = nil)
-    self.current_country = country if country.present? # set as current_country
-    country = self.current_country
+  def self.cities(country, state = nil)
+    country = normalized(country)
 
     # load the country file
-    if @cities[country].blank?
+    if @cities[country].nil?
       cities_fn = File.join(FILES_FOLDER, "cities.#{country.to_s.downcase}")
       self.install(country) if ! File.exists? cities_fn
-      @cities[country] = YAML::load_file(cities_fn).symbolize_keys
+      @cities[country] = symbolize(YAML::load_file(cities_fn))
     end
 
-    @cities[country][state.to_s.upcase.to_sym] || []
+    if state
+      @cities[country][normalized(state)] || []
+    else
+      @cities[country].map { |k,v| v }.flatten
+    end
   end
 
   def self.states(country)
-    self.current_country = country # set as current_country
-    country = self.current_country # normalized
+    country = normalized(country)
 
     # load the country file
-    if @states[country].blank?
+    if @states[country].nil?
       states_fn = File.join(FILES_FOLDER, "states.#{country.to_s.downcase}")
       self.install(country) if ! File.exists? states_fn
-      @states[country] = YAML::load_file(states_fn).symbolize_keys
+      @states[country] = symbolize(YAML::load_file(states_fn))
     end
 
     @states[country] || {}
@@ -168,9 +146,9 @@ module CS
       # reads CSV line by line
       File.foreach(MAXMIND_DB_FN) do |line|
         rec = line.split(",")
-        next if rec[COUNTRY].blank? || rec[COUNTRY_LONG].blank? # jump empty records
+        next if blank(rec[COUNTRY]) || blank(rec[COUNTRY_LONG]) # jump empty records
         country = rec[COUNTRY].to_s.upcase.to_sym # normalize to something like :US, :BR
-        if @countries[country].blank?
+        if @countries[country].nil?
           long = rec[COUNTRY_LONG].gsub(/\"/, "") # sometimes names come with a "\" char
           @countries[country] = long
         end
@@ -182,7 +160,7 @@ module CS
       File.chmod(0666, COUNTRIES_FN) # force permissions to rw_rw_rw_ (issue #3)
     else
       # countries.yml exists, just read it
-      @countries = YAML::load_file(COUNTRIES_FN).symbolize_keys
+      @countries = symbolize(YAML::load_file(COUNTRIES_FN))
     end
     @countries
   end
@@ -192,6 +170,30 @@ module CS
   def self.get(country = nil, state = nil)
     return self.countries if country.nil?
     return self.states(country) if state.nil?
-    return self.cities(state, country)
+    return self.cities(country, state)
+  end
+
+  def self.normalized(str)
+    if str && str != ''
+      str.to_s.upcase.to_sym
+    else
+      nil
+    end
+  end
+
+  def self.blank(value)
+    value.nil? || value == ''
+  end
+
+  def self.symbolize(obj)
+    return obj.reduce({}) do |memo, (k, v)|
+      memo.tap { |m| m[k.to_sym] = symbolize(v) }
+    end if obj.is_a? Hash
+
+    return obj.reduce([]) do |memo, v| 
+      memo << symbolize(v); memo
+    end if obj.is_a? Array
+
+    obj
   end
 end
