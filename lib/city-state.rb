@@ -1,8 +1,8 @@
 require "city-state/version"
 require "yaml"
 
-module CS
-  # CS constants
+module CityState
+  # CityState constants
   MAXMIND_ZIPPED_URL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City-CSV.zip"
   FILES_FOLDER = File.expand_path('../db', __FILE__)
   MAXMIND_DB_FN = File.join(FILES_FOLDER, "GeoLite2-City-Locations-en.csv")
@@ -37,7 +37,7 @@ module CS
       self.install(state_fn.split(".").last.upcase.to_sym) # reinstall country
     end
     @countries, @states, @cities = [{}, {}, {}] # invalidades cache
-    File.delete COUNTRIES_FN # force countries.yml to be generated at next call of CS.countries
+    File.delete COUNTRIES_FN # force countries.yml to be generated at next call of CityState.countries
     true
   end
 

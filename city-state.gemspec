@@ -5,7 +5,7 @@ require 'city-state/version'
 
 Gem::Specification.new do |spec|
   spec.name          = "city-state"
-  spec.version       = CS::VERSION
+  spec.version       = CityState::VERSION
   spec.authors       = ["Daniel Loureiro"]
   spec.email         = ["loureirorg@gmail.com"]
   spec.summary       = %q{Simple list of cities and states of the world}
